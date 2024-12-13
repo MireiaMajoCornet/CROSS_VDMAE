@@ -65,6 +65,31 @@ def assemble_patches_with_gaps(patches, gap_size, num_patches_per_row, patch_siz
             idx += 1
     return image_with_gaps
 
+def reshape_batch_of_masks(B, T, H, W, patch_size, num_patches, rgb_masks, depth_masks):
+    rgb_masks_full = torch.zeros((B, T, H, W), dtype=rgb_masks.dtype, device=rgb_masks.device)
+    depth_masks_full = torch.zeros((B, T, H, W), dtype=depth_masks.dtype, device=depth_masks.device)
+
+    # Map the patches to the full frame
+    patches_per_row = int(H / patch_size)  # 14 for a 224x224 image with 16x16 patches
+    for b in range(B):
+        for t in range(T):
+            for patch_idx in range(num_patches**2):
+                # Calculate the row and column in the 14x14 grid
+                row = patch_idx // patches_per_row
+                col = patch_idx % patches_per_row
+
+                # Calculate the pixel indices in the full frame for this patch
+                start_row = row * patch_size
+                start_col = col * patch_size
+                end_row = start_row + patch_size
+                end_col = start_col + patch_size
+
+                # Assign the mask value to the corresponding region of the full frame
+                rgb_masks_full[b, t, start_row:end_row, start_col:end_col] = rgb_masks[b, t, patch_idx]
+                depth_masks_full[b, t, start_row:end_row, start_col:end_col] = depth_masks[b, t, patch_idx]
+    return rgb_masks_full, depth_masks_full
+
+
 def log_visualizations(rgb_frames, depth_maps, reconstructed_image, reconstructed_depth, rgb_masks, depth_masks, epoch, batch_idx, prefix='Train'):
     '''
     Logs visualizations to WandB.
@@ -86,7 +111,7 @@ def log_visualizations(rgb_frames, depth_maps, reconstructed_image, reconstructe
     B, T, _ = rgb_masks.shape
     num_patches = 14 # TODO hardcoded
     patch_size = 16 # TODO hardcoded
-    H = W = 224 # TODO hardcoded
+    H, W = 224, 224 # TODO hardcoded
 
     reconstructed_image = reconstructed_image.view(B, T, num_patches, num_patches, patch_size**2 * 3)  # [B, T, num_patches_h, num_patches_w, num_pixels_per_patch * C]
     reconstructed_image = reconstructed_image.view(B, T, num_patches, num_patches, 3, patch_size, patch_size)  # last dimension to [C, patch_size_h, patch_size_w]
@@ -98,29 +123,12 @@ def log_visualizations(rgb_frames, depth_maps, reconstructed_image, reconstructe
     reconstructed_depth = reconstructed_depth.permute(0, 2, 4, 1, 5, 3).contiguous()  # [B, num_patches_h, patch_size_h, T, patch_size_w, num_patches_w]
     reconstructed_depth = reconstructed_depth.view(B, 1, T, H, W)
 
-    rgb_masks_full = torch.zeros((B, T, H, W), dtype=rgb_masks.dtype, device=rgb_masks.device)
-    depth_masks_full = torch.zeros((B, T, H, W), dtype=depth_masks.dtype, device=depth_masks.device)
+    # Verify the result
+    rgb_mask, depth_mask = reshape_batch_of_masks(B, T, H, W, patch_size, num_patches, rgb_masks, depth_masks)
 
-    # Map the patches to the full frame
-    for b in range(B):
-        for t in range(T):
-            for patch_idx in range(num_patches):
-                # Calculate the row and column in the 14x14 grid (this is a 2D index)
-                row = patch_idx // num_patches
-                col = patch_idx % num_patches
-
-                # Calculate the pixel indices in the full frame for this patch
-                start_row = row * patch_size
-                start_col = col * patch_size
-                end_row = start_row + patch_size
-                end_col = start_col + patch_size
-
-                # Assign the mask value to the corresponding region of the full frame
-                rgb_masks_full[b, t, start_row:end_row, start_col:end_col] = rgb_masks[b, t, patch_idx]
-                depth_masks_full[b, t, start_row:end_row, start_col:end_col] = depth_masks[b, t, patch_idx]
-
-    rgb_mask = rgb_masks_full[0, 0]  # Shape: (H, W)
-    depth_mask = depth_masks_full[0, 0]  # Shape: (H, W)
+    # Select first frame of first batch
+    rgb_mask = rgb_mask[0, 0].detach().cpu()
+    depth_mask = depth_mask[0, 0].detach().cpu()
 
     depth_mean = config['data']['depth_stats']['mean']
     depth_std = config['data']['depth_stats']['std']
@@ -220,4 +228,3 @@ def log_visualizations(rgb_frames, depth_maps, reconstructed_image, reconstructe
         'Epoch': epoch,
         'Batch': batch_idx
     })
-    
