@@ -3,7 +3,7 @@ import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
 import os
-
+ 
 
 def plot_patches(ax, patches, patch_size, title, cmap=None):
     """
