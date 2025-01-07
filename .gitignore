@@ -1,7 +1,8 @@
-wandb/*
 *.png
-/pretraining/w*
 *.jpg
 *.mp4
-depth_anything_v2/assets/*
+*.out
 *.pyc
+*/wandb/*
+depth_anything_v2/*
+checkpoints/*
