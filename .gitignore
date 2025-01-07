@@ -4,3 +4,4 @@ wandb/*
 *.jpg
 *.mp4
 depth_anything_v2/assets/*
+*.pyc
