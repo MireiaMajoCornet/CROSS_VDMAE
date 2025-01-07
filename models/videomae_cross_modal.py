@@ -9,9 +9,11 @@ from functools import partial
 import os
 import sys
 import logging
+import math
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../utils'))
 from tubeletembed import TubeletEmbed
+from round_masking import round_masking
 
 # Import visualization libraries and set backend for clusters without display
 import matplotlib
@@ -22,6 +24,9 @@ import matplotlib.animation as animation
 # Configure the logger for this module
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)  # Set the logging level to INFO
+
+
+
 
 class CrossModalVideoMAE(nn.Module):
     ''' Cross-modal VideoMAE model for Masked Video Reconstruction '''
@@ -131,7 +136,11 @@ class CrossModalVideoMAE(nn.Module):
         self.patch_size = config['patch_size']
         self.num_frames = config['num_frames']
         self.tubelet_size = config['tubelet_size']
-        self.mask_ratio = config.get('mask_ratio', 0.25)
+        self.mask_ratio = round_masking(config['mask_ratio'])
+
+        #num_patches_per_frame = (self.img_size // self.patch_size) ** 2
+        #assert (num_patches_per_frame * self.mask_ratio).is_integer(), "Number of patches per frame must be divisible by the mask ratio, CHANGE YOUR MASK RATIO"
+        
         self.device = config.get('device', 'cuda' if torch.cuda.is_available() else 'cpu')
         
     def forward(self, rgb_frames, depth_maps):
@@ -226,6 +235,16 @@ class CrossModalVideoMAE(nn.Module):
         depth_masks = depth_masks.unsqueeze(-1).expand(-1, -1, self.embed_dim)
         logger.info(f'RGB Masks shape (zeros removed): {rgb_masks.shape}')
         logger.info(f'Depth Masks shape (zeros removed): {depth_masks.shape}')
+        
+
+        print(f'RGB Embeddings shape of visible tubelets: {rgb_embeddings[~rgb_masks.bool()].shape}')
+        print(f'Depth Embeddings shape of visible tubelets: {depth_embeddings[~depth_masks.bool()].shape}')
+
+        
+        print(f'(num_tubelets*(1-self.mask_ratio)): {num_tubelets*(1-self.mask_ratio)}')
+        
+        print(f'RGB Embeddings shape of visible tubelets view [B, N_tubelets, embed_dim]: {rgb_embeddings[~rgb_masks.bool()].view(B, int(num_tubelets*(1-self.mask_ratio)), self.embed_dim).shape}')
+        print(f'Depth Embeddings shape of visible tubelets view [B, N_tubelets, embed_dim]: {depth_embeddings[~depth_masks.bool()].view(B, int(num_tubelets*(1-self.mask_ratio)), self.embed_dim).shape}')
 
         only_visible_embedded_tubelets_rgb = rgb_embeddings[~rgb_masks.bool()].view(B, int(num_tubelets*(1-self.mask_ratio)), self.embed_dim)
         only_visible_embedded_tubelets_depth = depth_embeddings[~depth_masks.bool()].view(B, int(num_tubelets*(1-self.mask_ratio)), self.embed_dim)
@@ -410,7 +429,7 @@ if __name__ == "__main__":
     data_config = full_config['data']
 
     # Add training parameters to config
-    config['mask_ratio'] = training_config.get('mask_ratio', 0.25)
+    config['mask_ratio'] = training_config['mask_ratio']
     config['alpha'] = training_config.get('alpha', 1.0) 
     config['beta'] = training_config.get('beta', 1.0)
 
