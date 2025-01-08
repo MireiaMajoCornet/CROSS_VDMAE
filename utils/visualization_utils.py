@@ -67,29 +67,84 @@ def assemble_patches_with_gaps(patches, gap_size, num_patches_per_row, patch_siz
     return image_with_gaps
 
 
-def reshape_batch_of_masks(B, T, H, W, patch_size, num_patches, rgb_masks, depth_masks):
-    rgb_masks_full = torch.zeros((B, T, H, W), dtype=rgb_masks.dtype, device=rgb_masks.device)
-    depth_masks_full = torch.zeros((B, T, H, W), dtype=depth_masks.dtype, device=depth_masks.device)
+def reshape_reconstructed_images(reconstructed_rgb, reconstructed_depth, batch_idx, frame_idx, num_patches, patch_size, img_size):
+    """
+    Reshape reconstructed RGB and depth data to full image size.
+
+    Args:
+        reconstructed_rgb: Tensor of shape [B, T, num_patches_per_frame, num_pixels_per_patch * channels] for RGB
+        reconstructed_depth: Tensor of shape [B, T, num_patches_per_frame, num_pixels_per_patch] for depth
+        batch_idx: Index of the batch
+        frame_idx: Index of the frame
+        num_patches: Number of patches along one dimension (e.g., 14 for 224x224 image with 16x16 patches)
+        patch_size: Size of each patch (e.g., 16)
+        img_size: Size of the full image (e.g., 224)
+
+    Returns:
+        reshaped_rgb: Tensor of shape [C, H, W] for RGB
+        reshaped_depth: Tensor of shape [H, W] for depth
+    """
+    # Reshape RGB data
+    rgb_frame = reconstructed_rgb[batch_idx, frame_idx, :, :]  # [num_patches_per_frame, num_pixels_per_patch * channels]
+    rgb_frame = rgb_frame.view(num_patches, num_patches, patch_size**2 * 3)  # [num_patches_h, num_patches_w, num_pixels_per_patch * C]
+    rgb_frame = rgb_frame.view(num_patches, num_patches, 3, patch_size, patch_size)  # [num_patches_h, num_patches_w, C, patch_size_h, patch_size_w]
+    rgb_frame = rgb_frame.permute(2, 0, 3, 1, 4).contiguous()  # [C, num_patches_h, patch_size_h, num_patches_w, patch_size_w]
+    reshaped_rgb = rgb_frame.view(3, img_size, img_size).detach().cpu()  # [C, H, W]
+
+    # Reshape depth data
+    depth_frame = reconstructed_depth[batch_idx, frame_idx, :, :]  # [num_patches_per_frame, num_pixels_per_patch]
+    depth_frame = depth_frame.view(num_patches, num_patches, patch_size, patch_size)  # [num_patches_h, num_patches_w, num_pixels_per_patch]
+    depth_frame = depth_frame.permute(0, 2, 1, 3).contiguous()  # [num_patches_h, patch_size_h, num_patches_w, patch_size_w]
+    reshaped_depth = depth_frame.view(img_size, img_size).squeeze().detach().cpu()  # [H, W]
+
+    return reshaped_rgb, reshaped_depth
+
+
+def reshape_batch_of_masks(rgb_masks, depth_masks, batch_idx, frame_idx, batch_size, num_frames, img_size, patch_size):
+    """
+    Reshape RGB and depth masks from patch-level to full-frame resolution.
+
+    Args:
+        rgb_masks: Tensor of shape [B, T, num_patches_per_frame] for RGB masks
+        depth_masks: Tensor of shape [B, T, num_patches_per_frame] for depth masks
+        batch_idx: Index of the batch
+        frame_idx: Index of the frame
+        batch_size: Total number of batches
+        num_frames: Number of frames in the sequence
+        img_size: Size of the full image (e.g., 224)
+        patch_size: Size of each patch (e.g., 16)
+
+    Returns:
+        reshaped_rgb_mask: Tensor of shape [H, W] for the selected RGB mask
+        reshaped_depth_mask: Tensor of shape [H, W] for the selected depth mask
+    """
+    num_patches = img_size // patch_size  # Number of patches per row/column
+    rgb_masks_full = torch.zeros((batch_size, num_frames, img_size, img_size), dtype=rgb_masks.dtype, device=rgb_masks.device)
+    depth_masks_full = torch.zeros((batch_size, num_frames, img_size, img_size), dtype=depth_masks.dtype, device=depth_masks.device)
 
     # Map the patches to the full frame
-    patches_per_row = int(H / patch_size)  # 14 for a 224x224 image with 16x16 patches
-    for b in range(B):
-        for t in range(T):
+    for b in range(batch_size):
+        for t in range(num_frames):
             for patch_idx in range(num_patches**2):
-                # Calculate the row and column in the 14x14 grid
-                row = patch_idx // patches_per_row
-                col = patch_idx % patches_per_row
+                # Calculate the row and column in the patch grid
+                row = patch_idx // num_patches
+                col = patch_idx % num_patches
 
-                # Calculate the pixel indices in the full frame for this patch
+                # Calculate pixel indices in the full frame
                 start_row = row * patch_size
                 start_col = col * patch_size
                 end_row = start_row + patch_size
                 end_col = start_col + patch_size
 
-                # Assign the mask value to the corresponding region of the full frame
+                # Assign mask values to the corresponding region of the full frame
                 rgb_masks_full[b, t, start_row:end_row, start_col:end_col] = rgb_masks[b, t, patch_idx]
                 depth_masks_full[b, t, start_row:end_row, start_col:end_col] = depth_masks[b, t, patch_idx]
-    return rgb_masks_full, depth_masks_full
+
+    # Extract and detach the specific masks for the given batch and frame
+    reshaped_rgb_mask = rgb_masks_full[batch_idx, frame_idx].detach().cpu()  # [H, W]
+    reshaped_depth_mask = depth_masks_full[batch_idx, frame_idx].detach().cpu()  # [H, W]
+
+    return reshaped_rgb_mask, reshaped_depth_mask
 
 
 def log_visualizations(rgb_frames, depth_maps, reconstructed_rgb, reconstructed_depth, rgb_masks, depth_masks, epoch, batch_idx=0, frame_idx=0, prefix='Train'):
@@ -121,23 +176,13 @@ def log_visualizations(rgb_frames, depth_maps, reconstructed_rgb, reconstructed_
     assert num_patches.is_integer(), 'Image size must be divisible by patch size'
     num_patches = int(num_patches)  # 14 for a 224x224 image with 16x16 patches
 
-    # Reshape reconstructed RGB image; get the frame from the batch
-    reconstructed_rgb = reconstructed_rgb[batch_idx, frame_idx, :, :]  # [num_patches_per_frame, num_pixels_per_patch * C]
-    reconstructed_rgb = reconstructed_rgb.view(num_patches, num_patches, patch_size**2 * 3)  # [num_patches_h, num_patches_w, num_pixels_per_patch * C]
-    reconstructed_rgb = reconstructed_rgb.view(num_patches, num_patches, 3, patch_size, patch_size)  # [num_patches_h, num_patches_w, C, patch_size_h, patch_size_w]
-    reconstructed_rgb = reconstructed_rgb.permute(2, 0, 3, 1, 4).contiguous()  # [C, num_patches_h, patch_size_h, num_patches_w, patch_size_w]
-    reconstructed_rgb = reconstructed_rgb.view(3, img_size, img_size).detach().cpu()  # [3, H, W]
+    # Reshape reconstructed RGB and depth images; get the frame from the batch
+    reconstructed_rgb, reconstructed_depth = reshape_reconstructed_images(reconstructed_rgb, reconstructed_depth, batch_idx, frame_idx,
+                                                                          num_patches, patch_size, img_size)
 
-    # Reshape reconstructed depth map; get the frame from the batch
-    reconstructed_depth = reconstructed_depth[batch_idx, frame_idx, :, :]  # [num_patches_per_frame, num_pixels_per_patch * C]
-    reconstructed_depth = reconstructed_depth.view(num_patches, num_patches, patch_size, patch_size)  # [num_patches_h, num_patches_w, num_pixels_per_patch]
-    reconstructed_depth = reconstructed_depth.permute(0, 2, 1, 3).contiguous()  # [B, num_patches_h, patch_size_h, T, patch_size_w, num_patches_w]
-    reconstructed_depth = reconstructed_depth.view(img_size, img_size).squeeze().detach().cpu()  # [H, W]
-    
     # Reshape RGB and depth masks; get the frame from the batch
-    rgb_mask, depth_mask = reshape_batch_of_masks(batch_size, num_frames, img_size, img_size, patch_size, num_patches, rgb_masks, depth_masks)
-    rgb_mask = rgb_mask[batch_idx, frame_idx].detach().cpu()  # [H, W]
-    depth_mask = depth_mask[batch_idx, frame_idx].detach().cpu()  # [H, W]
+    rgb_mask, depth_mask = reshape_batch_of_masks(rgb_masks, depth_masks, batch_idx, frame_idx,
+                                                  batch_size, num_frames, img_size, patch_size)
 
     # Get the original image and depth map
     original_rgb = rgb_frames[batch_idx, :, frame_idx, :, :].detach().cpu()  # [3, H, W]
