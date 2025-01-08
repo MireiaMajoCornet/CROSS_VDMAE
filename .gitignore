@@ -1,4 +1,6 @@
+wandb/*
 *.png
+/pretraining/w*
 *.jpg
 *.mp4
 depth_anything_v2/assets/*
