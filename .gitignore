@@ -1,7 +1,10 @@
-wandb/*
-*.png
-/pretraining/w*
 *.jpg
+*.png
 *.mp4
-depth_anything_v2/assets/*
-/depth_anything_v2/
+*.out
+
+*/__pycache__/
+*/wandb/
+
+checkpoints/
+depth_anything_v2/
