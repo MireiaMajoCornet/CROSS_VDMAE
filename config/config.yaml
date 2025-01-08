@@ -3,34 +3,36 @@ model:
   patch_size: 16           # Patch size
   num_frames: 16           # Number of frames
   tubelet_size: 4          # Tubelet size
-  embed_dim: 768           # Embedding dimension for both encoder and embeddings
+  embed_dim: 384           # Embedding dimension for both encoder and embeddings
   frame_interval: 1        # Frame interval for the tubelets
 
-  num_layers_encoder: 12   # Number of layers in the encoder
-  encoder_num_heads: 12    # Number of attention heads in the encoder
-  encoder_mlp_ratio: 4     # MLP ratio in the encoder
+  num_layers_encoder: 4   # Number of layers in the encoder
+  encoder_num_heads: 4    # Number of attention heads in the encoder
+  encoder_mlp_ratio: 4    # MLP ratio in the encoder
 
   decoder_embed_dim: 384   # Embedding dimension for the decoders
-  num_layers_decoder: 4    # Number of layers in both decoders
-  decoder_num_heads: 8     # Number of attention heads in the decoders
+  num_layers_decoder: 2    # Number of layers in both decoders
+  decoder_num_heads: 4     # Number of attention heads in the decoders
   decoder_mlp_ratio: 4     # MLP ratio in the decoders
-
-  mask_ratio: 0.25        # Mask ratio for training
+  
+  mask_ratio: 0.90        # Mask ratio for training
 
 training:
   batch_size: 1
   num_epochs: 500
-  lr: 0.00003
+  lr: 0.0003
   weight_decay: 0.0001
   model_checkpoint_path: ../checkpoints
   num_workers: 0
   alpha: 1.0               # Weight for RGB loss
   beta: 1.0                # Weight for Depth loss 
-  mask_ratio: 0.25        # Mask ratio for training
+  mask_ratio: 0.90         # Mask ratio for training
+  
 
 data:
   depth_model_checkpoint: ../depth_anything_v2/checkpoints/depth_anything_v2_vitl.pth
   finevideo_path: /data/datasets/finevideo/sports_videos
+  single_video_path: '/data/datasets/finevideo/sports_videos/circle_animation_static.mp4'
   depth_stats:
     mean: 0.5
     std: 0.5

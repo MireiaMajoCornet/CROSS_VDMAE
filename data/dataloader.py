@@ -8,15 +8,6 @@ import numpy as np
 import warnings
 import random
 
-# Import necessary modules and libraries:
-# - os: For interacting with the operating system (e.g., file paths).
-# - cv2: OpenCV library for image and video processing.
-# - torch: PyTorch library for tensor computations and neural networks.
-# - torch.utils.data: Provides tools for dataset handling and data loading.
-# - torchvision.transforms: Common image transformations.
-# - matplotlib.pyplot: For plotting and visualization.
-# - numpy: Numerical computations.
-# - warnings: To manage warning messages.
 
 # Adjust the Python path to include the 'depth_anything_v2' directory.
 import sys
