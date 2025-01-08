@@ -16,16 +16,26 @@ def plot_patches(ax, patches, patch_size, title, cmap=None):
         title: Title for the row of patches.
         cmap: Colormap to use for grayscale images.
     """
+    # Compute the global min and max across all patches
+    global_min = patches.min()
+    global_max = patches.max()
+    
+    # Normalize all patches globally
+    patches = (patches - global_min) / (global_max - global_min)
+    
     num_patches = patches.shape[0]
     num_channels = patches.shape[1] // (patch_size ** 2)
+    
     for i in range(num_patches):
-        patch = patches[i].astype(np.float32).reshape(num_channels, patch_size, patch_size)  # Convert to float32
+        patch = patches[i].astype(np.float32).reshape(num_channels, patch_size, patch_size)
         patch = patch.transpose(1, 2, 0)
+        
         if num_channels == 1:  # Depth (grayscale)
             patch = patch.squeeze(-1)  # Remove the channel dimension
             ax[i].imshow(patch, cmap=cmap)
         else:  # RGB
             ax[i].imshow(patch)
+        
         ax[i].axis('off')
     ax[0].set_title(title)
 
