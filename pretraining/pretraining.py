@@ -164,7 +164,7 @@ def main():
 
         # Set the progress bar
         progress_bar = tqdm(enumerate(dataloader), total=len(dataloader), desc=f"Epoch {epoch+1}/{num_epochs}")
-        print(f"Length of dataloader: {len(dataloader)}")
+        print(f"Length of dataloader: {len(dataloader)}")  # If distributed training, this will be the number of batches per process
         
         # Iterate over the dataloader
         for batch_idx, batch in progress_bar:
@@ -223,7 +223,6 @@ def main():
                                     rgb_masks_per_frame,
                                     depth_masks_per_frame,
                                     epoch,
-                                    batch_idx,
                                     prefix='Train')
             
         # Step the scheduler
