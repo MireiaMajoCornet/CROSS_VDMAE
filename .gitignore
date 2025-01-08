@@ -2,6 +2,7 @@
 *.png
 *.mp4
 *.out
+*.sh
 
 */__pycache__/
 */wandb/
