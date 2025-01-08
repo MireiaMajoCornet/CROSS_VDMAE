@@ -25,14 +25,14 @@ training:
   model_checkpoint_path: ../checkpoints
   num_workers: 0
   alpha: 1.0               # Weight for RGB loss
-  beta: 1.0                # Weight for Depth loss 
+  beta: 0.0                # Weight for Depth loss 
   mask_ratio: 0.90         # Mask ratio for training
   
 
 data:
   depth_model_checkpoint: ../depth_anything_v2/checkpoints/depth_anything_v2_vitl.pth
   finevideo_path: /data/datasets/finevideo/sports_videos
-  single_video_path: '/data/datasets/finevideo/sports_videos/circle_animation_static.mp4'
+  single_video_path: '/data/datasets/finevideo/trial_videos/circle_animation_static.mp4'
   depth_stats:
     mean: 0.5
     std: 0.5
