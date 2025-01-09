@@ -67,14 +67,14 @@ def assemble_patches_with_gaps(patches, gap_size, num_patches_per_row, patch_siz
     return image_with_gaps
 
 
-def reshape_reconstructed_images(reconstructed_rgb, reconstructed_depth, batch_idx, frame_idx, num_patches, patch_size, img_size):
+def reshape_reconstructed_images(reconstructed_rgb, reconstructed_depth, seq_idx, frame_idx, num_patches, patch_size, img_size):
     """
     Reshape reconstructed RGB and depth data to full image size.
 
     Args:
         reconstructed_rgb: Tensor of shape [B, T, num_patches_per_frame, num_pixels_per_patch * channels] for RGB
         reconstructed_depth: Tensor of shape [B, T, num_patches_per_frame, num_pixels_per_patch] for depth
-        batch_idx: Index of the batch
+        seq_idx: Index of the sequence
         frame_idx: Index of the frame
         num_patches: Number of patches along one dimension (e.g., 14 for 224x224 image with 16x16 patches)
         patch_size: Size of each patch (e.g., 16)
@@ -85,14 +85,14 @@ def reshape_reconstructed_images(reconstructed_rgb, reconstructed_depth, batch_i
         reshaped_depth: Tensor of shape [H, W] for depth
     """
     # Reshape RGB data
-    rgb_frame = reconstructed_rgb[batch_idx, frame_idx, :, :]  # [num_patches_per_frame, num_pixels_per_patch * channels]
+    rgb_frame = reconstructed_rgb[seq_idx, frame_idx, :, :]  # [num_patches_per_frame, num_pixels_per_patch * channels]
     rgb_frame = rgb_frame.view(num_patches, num_patches, patch_size**2 * 3)  # [num_patches_h, num_patches_w, num_pixels_per_patch * C]
     rgb_frame = rgb_frame.view(num_patches, num_patches, 3, patch_size, patch_size)  # [num_patches_h, num_patches_w, C, patch_size_h, patch_size_w]
     rgb_frame = rgb_frame.permute(2, 0, 3, 1, 4).contiguous()  # [C, num_patches_h, patch_size_h, num_patches_w, patch_size_w]
     reshaped_rgb = rgb_frame.view(3, img_size, img_size).detach().cpu()  # [C, H, W]
 
     # Reshape depth data
-    depth_frame = reconstructed_depth[batch_idx, frame_idx, :, :]  # [num_patches_per_frame, num_pixels_per_patch]
+    depth_frame = reconstructed_depth[seq_idx, frame_idx, :, :]  # [num_patches_per_frame, num_pixels_per_patch]
     depth_frame = depth_frame.view(num_patches, num_patches, patch_size, patch_size)  # [num_patches_h, num_patches_w, num_pixels_per_patch]
     depth_frame = depth_frame.permute(0, 2, 1, 3).contiguous()  # [num_patches_h, patch_size_h, num_patches_w, patch_size_w]
     reshaped_depth = depth_frame.view(img_size, img_size).squeeze().detach().cpu()  # [H, W]
@@ -100,14 +100,14 @@ def reshape_reconstructed_images(reconstructed_rgb, reconstructed_depth, batch_i
     return reshaped_rgb, reshaped_depth
 
 
-def reshape_batch_of_masks(rgb_masks, depth_masks, batch_idx, frame_idx, batch_size, num_frames, img_size, patch_size):
+def reshape_batch_of_masks(rgb_masks, depth_masks, seq_idx, frame_idx, batch_size, num_frames, img_size, patch_size):
     """
     Reshape RGB and depth masks from patch-level to full-frame resolution.
 
     Args:
         rgb_masks: Tensor of shape [B, T, num_patches_per_frame] for RGB masks
         depth_masks: Tensor of shape [B, T, num_patches_per_frame] for depth masks
-        batch_idx: Index of the batch
+        seq_idx: Index of the sequence
         frame_idx: Index of the frame
         batch_size: Total number of batches
         num_frames: Number of frames in the sequence
@@ -141,13 +141,13 @@ def reshape_batch_of_masks(rgb_masks, depth_masks, batch_idx, frame_idx, batch_s
                 depth_masks_full[b, t, start_row:end_row, start_col:end_col] = depth_masks[b, t, patch_idx]
 
     # Extract and detach the specific masks for the given batch and frame
-    reshaped_rgb_mask = rgb_masks_full[batch_idx, frame_idx].detach().cpu()  # [H, W]
-    reshaped_depth_mask = depth_masks_full[batch_idx, frame_idx].detach().cpu()  # [H, W]
+    reshaped_rgb_mask = rgb_masks_full[seq_idx, frame_idx].detach().cpu()  # [H, W]
+    reshaped_depth_mask = depth_masks_full[seq_idx, frame_idx].detach().cpu()  # [H, W]
 
     return reshaped_rgb_mask, reshaped_depth_mask
 
 
-def log_visualizations(rgb_frames, depth_maps, reconstructed_rgb, reconstructed_depth, rgb_masks, depth_masks, epoch, batch_idx=0, frame_idx=0, prefix='Train'):
+def log_visualizations(rgb_frames, depth_maps, reconstructed_rgb, reconstructed_depth, rgb_masks, depth_masks, epoch, seq_idx=0, frame_idx=0, prefix='Train'):
     '''
     Logs visualizations to WandB.
     Args:
@@ -158,7 +158,7 @@ def log_visualizations(rgb_frames, depth_maps, reconstructed_rgb, reconstructed_
         rgb_masks: masks used during training for rgb frames [B, T, num_patches_per_frame]
         depth_masks: masks used during training for depth maps [B, T, num_patches_per_frame]
         epoch: current epoch
-        batch_idx: batch to log
+        seq_idx: sequence to log
         frame_idx: frame to log
         prefix: 'Train' or 'Validation'
     '''
@@ -177,16 +177,16 @@ def log_visualizations(rgb_frames, depth_maps, reconstructed_rgb, reconstructed_
     num_patches = int(num_patches)  # 14 for a 224x224 image with 16x16 patches
 
     # Reshape reconstructed RGB and depth images; get the frame from the batch
-    reconstructed_rgb, reconstructed_depth = reshape_reconstructed_images(reconstructed_rgb, reconstructed_depth, batch_idx, frame_idx,
+    reconstructed_rgb, reconstructed_depth = reshape_reconstructed_images(reconstructed_rgb, reconstructed_depth, seq_idx, frame_idx,
                                                                           num_patches, patch_size, img_size)
 
     # Reshape RGB and depth masks; get the frame from the batch
-    rgb_mask, depth_mask = reshape_batch_of_masks(rgb_masks, depth_masks, batch_idx, frame_idx,
+    rgb_mask, depth_mask = reshape_batch_of_masks(rgb_masks, depth_masks, seq_idx, frame_idx,
                                                   batch_size, num_frames, img_size, patch_size)
 
     # Get the original image and depth map
-    original_rgb = rgb_frames[batch_idx, :, frame_idx, :, :].detach().cpu()  # [3, H, W]
-    original_depth = depth_maps[batch_idx, :, frame_idx, :, :].detach().cpu()  # [1, H, W]
+    original_rgb = rgb_frames[seq_idx, :, frame_idx, :, :].detach().cpu()  # [3, H, W]
+    original_depth = depth_maps[seq_idx, :, frame_idx, :, :].detach().cpu()  # [1, H, W]
 
     # Denormalize depth map
     depth_mean = config['data']['depth_stats']['mean']
