@@ -196,9 +196,9 @@ def main():
                                                         depth_frame_reconstruction, 
                                                         rgb_masks_per_frame,
                                                         depth_masks_per_frame,
-                                                        patch_size=16,
-                                                        alpha=1.0,
-                                                        beta=1.0)
+                                                        patch_size=model_config['patch_size'],
+                                                        alpha=training_config['alpha'],
+                                                        beta=training_config['beta'])
                 
             print(f"Loss: {loss}, Type: {type(loss)}")
             print(f"Loss device: {loss.device}")
